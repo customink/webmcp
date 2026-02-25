@@ -1,0 +1,1645 @@
+<!--
+  ╔══════════════════════════════════════════════════════════════════╗
+  ║              WebMCP Demo — CustomInk-Style Product Flow          ║
+  ╠══════════════════════════════════════════════════════════════════╣
+  ║  HOW TO ENABLE WEBMCP IN CHROME CANARY                          ║
+  ║                                                                  ║
+  ║  1. Download Chrome Canary: https://www.google.com/chrome/canary/║
+  ║  2. Open chrome://flags in Canary                               ║
+  ║  3. Search for "WebMCP" or "Model Context"                      ║
+  ║  4. Set the flag to "Enabled"                                   ║
+  ║  5. Click "Relaunch" to restart Chrome Canary                   ║
+  ║  6. Open this file: File → Open File → webmcp-demo.html         ║
+  ║                                                                  ║
+  ║  CONNECTING AN AGENT                                             ║
+  ║                                                                  ║
+  ║  Once the flag is enabled, any WebMCP-compatible agent running  ║
+  ║  in the same browser can discover and call the tools registered  ║
+  ║  on this page via window.navigator.modelContext.                 ║
+  ║                                                                  ║
+  ║  The browser mediates all tool calls — the agent never touches   ║
+  ║  the DOM directly. Watch the Tool Activity Log for incoming      ║
+  ║  tool calls in real time.                                        ║
+  ║                                                                  ║
+  ║  POLYFILL FALLBACK                                               ║
+  ║                                                                  ║
+  ║  If navigator.modelContext is not available, this page loads     ║
+  ║  the @mcp-b/global polyfill automatically. A warning will        ║
+  ║  appear in the Tool Activity Log if this fallback is used.       ║
+  ║                                                                  ║
+  ║  TOOLS REGISTERED                                                ║
+  ║  • searchProducts(query, category)                               ║
+  ║  • configureProduct(productId, color, size)                      ║
+  ║  • getQuote(productId, quantity, color, size, decoration)        ║
+  ║  • addToCart(productId, quantity, color, size, decoration)       ║
+  ║  • getCart()                                                     ║
+  ╚══════════════════════════════════════════════════════════════════╝
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebMCP Demo — CustomInk-Style Ordering Flow</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Sans+3:wght@300;400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    /* ─── CSS Custom Properties (Pigment Design Tokens — Light) ──────── */
+    :root {
+      /* Pigment: semantics.light.neutral.background.* */
+      --bg-base:        #fafafa;   /* pageBG */
+      --bg-surface:     #ffffff;   /* primary */
+      --bg-raised:      #f5f5f5;   /* subtleOpaque */
+
+      /* Pigment: semantics.light.neutral.border.* */
+      --border:         #0000001c; /* default */
+      --border-muted:   #0000000a; /* weak */
+
+      /* Pigment: semantics.light.partnership.* — Custom Ink brand orange */
+      --accent-amber:   #fa3c00;   /* partnership.background.bold */
+      --accent-amber-hover: #e03600; /* partnership.background.boldAccessible */
+
+      /* Pigment: semantics.light.feedback.* */
+      --accent-green:   #198038;   /* successBold */
+      --accent-red:     #da1e28;   /* dangerBold */
+      --accent-blue:    #1e39d2;   /* interactive.background.bold */
+      --accent-yellow:  #a86800;   /* warningAccessible */
+
+      /* Pigment: semantics.light.neutral.text.* */
+      --text-primary:   #000000db; /* primary */
+      --text-secondary: #00000091; /* secondary */
+      --text-muted:     #00000069; /* interactive.text.disabled */
+
+      /* Pigment: semantics.light.neutral.background.toolbar — matches CI nav */
+      --header-bg:      #363636;
+
+      --font-ui:   "Source Sans 3", system-ui, sans-serif;
+      --font-mono: "IBM Plex Mono", "Fira Code", monospace;
+
+      /* Pigment: semantics.units.radius.* */
+      --radius-sm: 4px;  /* radius.sm */
+      --radius-md: 8px;  /* radius.card */
+      --radius-lg: 16px; /* radius.lg */
+    }
+
+    /* ─── Reset / Base ────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: var(--bg-base);
+      color: var(--text-primary);
+      font-family: var(--font-ui);
+      font-size: 15px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ─── App Shell ───────────────────────────────────────────────────── */
+    #app {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ─── Polyfill Warning Banner ─────────────────────────────────────── */
+    #polyfill-warning {
+      background: #fff4f0;
+      border-bottom: 1px solid rgba(250, 60, 0, 0.3);
+      color: #e03600;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 8px 16px;
+      text-align: center;
+      letter-spacing: 0.01em;
+    }
+
+    /* ─── Header ──────────────────────────────────────────────────────── */
+    #header {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      padding: 12px 20px;
+      background: var(--header-bg);
+      border-bottom: none;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+
+    .header-brand {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .header-brand .title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: -0.01em;
+    }
+
+    .header-brand .subtitle {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.55);
+      font-weight: 400;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    /* ─── Agent Status ────────────────────────────────────────────────── */
+    #agent-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.65);
+      justify-self: center;
+      transition: color 0.3s ease, border-color 0.3s ease, background 0.3s ease;
+      user-select: none;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.3);
+      flex-shrink: 0;
+      transition: background 0.3s ease;
+    }
+
+    #agent-status.active {
+      color: #5eca77;
+      border-color: rgba(94, 202, 119, 0.5);
+      background: rgba(94, 202, 119, 0.1);
+    }
+
+    #agent-status.active .status-dot {
+      background: #5eca77;
+      animation: pulse-green 1.6s ease-in-out infinite;
+    }
+
+    #agent-status.active .status-label {
+      color: #5eca77;
+    }
+
+    @keyframes pulse-green {
+      0%, 100% {
+        box-shadow: 0 0 0 0 rgba(94, 202, 119, 0.6);
+        opacity: 1;
+      }
+      50% {
+        box-shadow: 0 0 0 6px rgba(94, 202, 119, 0);
+        opacity: 0.85;
+      }
+    }
+
+    /* ─── Header Chips ────────────────────────────────────────────────── */
+    .header-chips {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      justify-self: end;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      letter-spacing: 0.04em;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.1);
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    .chip-webmcp {
+      border-color: rgba(140, 157, 255, 0.5);
+      color: #a8b8ff;
+      background: rgba(140, 157, 255, 0.12);
+    }
+
+    .chip-canary {
+      border-color: rgba(250, 60, 0, 0.5);
+      color: #ff8a6a;
+      background: rgba(250, 60, 0, 0.12);
+    }
+
+    /* ─── Main 3-Column Layout ────────────────────────────────────────── */
+    #main-layout {
+      display: grid;
+      grid-template-columns: 1fr 240px 320px;
+      overflow: hidden;
+      height: 100%;
+    }
+
+    /* ─── Section Headers ─────────────────────────────────────────────── */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .count-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1px 7px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 500;
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+    }
+
+    /* ─── Column 1: Product Catalog ───────────────────────────────────── */
+    #catalog-column {
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    #product-grid-wrapper {
+      overflow-y: auto;
+      flex: 1;
+      padding: 16px;
+    }
+
+    #product-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    @media (max-width: 1200px) {
+      #main-layout { grid-template-columns: 1fr 220px 280px; }
+      #product-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (max-width: 900px) {
+      #main-layout { grid-template-columns: 1fr; }
+      #product-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    /* Product Card */
+    .product-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      cursor: default;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    }
+
+    .product-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(250, 60, 0, 0.4);
+      box-shadow: 0 4px 16px rgba(250, 60, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.06);
+    }
+
+    .product-card-image {
+      width: 100%;
+      aspect-ratio: 4/3;
+      object-fit: cover;
+      display: block;
+      background: var(--bg-raised);
+    }
+
+    .product-card-body {
+      padding: 10px 12px;
+    }
+
+    .product-card-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .product-card-category {
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+
+    .product-card-price {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent-amber);
+    }
+
+    /* ─── Skeleton Cards ──────────────────────────────────────────────── */
+    .skeleton-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+
+    .skeleton-image {
+      width: 100%;
+      aspect-ratio: 4/3;
+      background: var(--bg-raised);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .skeleton-body {
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .skeleton-line {
+      height: 12px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-raised);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .skeleton-line.short { width: 55%; }
+    .skeleton-line.medium { width: 75%; }
+    .skeleton-line.long { width: 90%; }
+
+    .skeleton-image::after,
+    .skeleton-line::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.7) 40%,
+        rgba(255, 255, 255, 0.9) 50%,
+        rgba(255, 255, 255, 0.7) 60%,
+        transparent 100%
+      );
+      background-size: 200% 100%;
+      animation: shimmer 1.6s infinite linear;
+    }
+
+    @keyframes shimmer {
+      0%   { background-position: -200% 0; }
+      100% { background-position:  200% 0; }
+    }
+
+    /* ─── Column 2: Cart Sidebar ──────────────────────────────────────── */
+    #cart-column {
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      overflow: hidden;
+      background: var(--bg-surface);
+    }
+
+    #cart-list-wrapper {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+    }
+
+    #cart-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .cart-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border-muted);
+    }
+
+    .cart-item-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .cart-item-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .cart-item-meta {
+      font-size: 11px;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+    }
+
+    .cart-item-price {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent-amber);
+      white-space: nowrap;
+    }
+
+    .cart-empty-state {
+      padding: 24px 14px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .cart-empty-icon {
+      font-size: 28px;
+      margin-bottom: 8px;
+      opacity: 0.4;
+    }
+
+    #cart-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 6px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      background: rgba(250, 60, 0, 0.1);
+      border: 1px solid rgba(250, 60, 0, 0.3);
+      color: var(--accent-amber);
+    }
+
+    #cart-footer {
+      border-top: 1px solid var(--border);
+      padding: 14px;
+      background: var(--bg-raised);
+      flex-shrink: 0;
+    }
+
+    .cart-total-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .cart-total-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-secondary);
+    }
+
+    #cart-total {
+      font-family: var(--font-mono);
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--accent-amber);
+    }
+
+    .cart-hint {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-align: center;
+      font-family: var(--font-mono);
+      letter-spacing: 0.03em;
+    }
+
+    /* ─── Column 3: Tool Activity Log ─────────────────────────────────── */
+    #log-column {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg-surface);
+    }
+
+    .log-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .live-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      animation: pulse-green 1.6s ease-in-out infinite;
+      flex-shrink: 0;
+    }
+
+    .btn-clear {
+      padding: 3px 10px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      font-weight: 500;
+      color: var(--text-secondary);
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+      letter-spacing: 0.03em;
+    }
+
+    .btn-clear:hover {
+      color: var(--accent-red);
+      border-color: rgba(218, 30, 40, 0.35);
+      background: rgba(218, 30, 40, 0.06);
+    }
+
+    #tool-log {
+      flex: 1;
+      overflow-y: auto;
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      line-height: 1.5;
+      background: var(--bg-surface);
+    }
+
+    /* ─── Log Entry Styles ────────────────────────────────────────────── */
+    .log-entry {
+      border-bottom: 1px solid var(--border-muted);
+      padding: 8px 14px;
+      transition: background 0.1s;
+    }
+
+    .log-entry:hover {
+      background: var(--bg-raised);
+    }
+
+    .log-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 4px;
+    }
+
+    .log-time {
+      color: var(--text-muted);
+      font-size: 10.5px;
+      flex-shrink: 0;
+    }
+
+    .log-name {
+      font-weight: 600;
+      font-size: 12px;
+      letter-spacing: 0.02em;
+    }
+
+    .log-duration {
+      font-size: 10.5px;
+      color: var(--text-secondary);
+      margin-left: auto;
+      background: var(--bg-raised);
+      padding: 1px 6px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-muted);
+    }
+
+    .log-msg {
+      color: var(--text-secondary);
+      font-size: 11px;
+      margin-top: 2px;
+      display: block;
+    }
+
+    .log-params,
+    .log-result {
+      margin-top: 4px;
+      padding: 5px 8px;
+      border-radius: var(--radius-sm);
+      font-size: 10.5px;
+      line-height: 1.6;
+      word-break: break-all;
+      white-space: pre-wrap;
+    }
+
+    .log-params {
+      background: rgba(30, 57, 210, 0.04);
+      border-left: 2px solid rgba(30, 57, 210, 0.25);
+      color: var(--text-secondary);
+    }
+
+    .log-result {
+      background: rgba(25, 128, 56, 0.04);
+      border-left: 2px solid rgba(25, 128, 56, 0.25);
+      color: var(--text-secondary);
+    }
+
+    /* Variant colors by log type */
+    .log-system .log-name { color: var(--accent-blue); }
+    .log-system            { border-left: 2px solid rgba(30, 57, 210, 0.35); }
+
+    .log-success .log-name { color: var(--accent-green); }
+    .log-success           { border-left: 2px solid rgba(25, 128, 56, 0.35); }
+
+    .log-error .log-name   { color: var(--accent-red); }
+    .log-error             { border-left: 2px solid rgba(218, 30, 40, 0.35); }
+
+    .log-call .log-name    { color: var(--accent-amber); }
+    .log-call              { border-left: 2px solid rgba(250, 60, 0, 0.4); }
+
+    /* ─── Scrollbar Styling ───────────────────────────────────────────── */
+    #tool-log::-webkit-scrollbar,
+    #product-grid-wrapper::-webkit-scrollbar,
+    #cart-list-wrapper::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    #tool-log::-webkit-scrollbar-track,
+    #product-grid-wrapper::-webkit-scrollbar-track,
+    #cart-list-wrapper::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    #tool-log::-webkit-scrollbar-thumb,
+    #product-grid-wrapper::-webkit-scrollbar-thumb,
+    #cart-list-wrapper::-webkit-scrollbar-thumb {
+      background: #0000001c;
+      border-radius: 4px;
+    }
+
+    #tool-log::-webkit-scrollbar-thumb:hover,
+    #product-grid-wrapper::-webkit-scrollbar-thumb:hover,
+    #cart-list-wrapper::-webkit-scrollbar-thumb:hover {
+      background: #00000069;
+    }
+
+    /* Firefox */
+    #tool-log,
+    #product-grid-wrapper,
+    #cart-list-wrapper {
+      scrollbar-width: thin;
+      scrollbar-color: #0000001c transparent;
+    }
+
+    /* ─── Utility / Misc ──────────────────────────────────────────────── */
+    [hidden] { display: none !important; }
+
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 0;
+    }
+
+    /* Column sub-label above section title */
+    .col-eyebrow {
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Polyfill Warning Banner -->
+<div id="polyfill-warning" hidden>
+  &nbsp;&#9888;&nbsp; <strong>navigator.modelContext not found.</strong> Using @mcp-b/global polyfill &mdash; tools may behave differently than native WebMCP.
+</div>
+
+<!-- App Shell -->
+<div id="app">
+
+  <!-- ═══ HEADER ═══════════════════════════════════════════════════════ -->
+  <header id="header">
+
+    <!-- Left: Branding -->
+    <div class="header-brand">
+      <span class="title">WebMCP Demo</span>
+      <span class="subtitle">CustomInk-Style Ordering Flow</span>
+    </div>
+
+    <!-- Center: Agent Status -->
+    <div id="agent-status" role="status" aria-live="polite">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span class="status-label">Waiting for Agent</span>
+    </div>
+
+    <!-- Right: Chips -->
+    <div class="header-chips">
+      <span class="chip chip-webmcp">WebMCP</span>
+      <span class="chip chip-canary">Chrome Canary</span>
+    </div>
+
+  </header>
+
+  <!-- ═══ MAIN 3-COLUMN LAYOUT ═════════════════════════════════════════ -->
+  <div id="main-layout">
+
+    <!-- ── Column 1: Product Catalog ─────────────────────────────────── -->
+    <section id="catalog-column" aria-label="Product Catalog">
+
+      <div class="section-header">
+        <h2 class="section-title">
+          Product Catalog
+          <span class="count-badge" id="product-count">10 products</span>
+        </h2>
+      </div>
+
+      <div id="product-grid-wrapper">
+        <div id="product-grid" role="list" aria-label="Products">
+
+          <!-- Skeleton loading placeholders — replaced by JS -->
+          <div class="skeleton-card" aria-hidden="true">
+            <div class="skeleton-image"></div>
+            <div class="skeleton-body">
+              <div class="skeleton-line long"></div>
+              <div class="skeleton-line short"></div>
+              <div class="skeleton-line medium"></div>
+            </div>
+          </div>
+          <div class="skeleton-card" aria-hidden="true">
+            <div class="skeleton-image"></div>
+            <div class="skeleton-body">
+              <div class="skeleton-line medium"></div>
+              <div class="skeleton-line short"></div>
+              <div class="skeleton-line long"></div>
+            </div>
+          </div>
+          <div class="skeleton-card" aria-hidden="true">
+            <div class="skeleton-image"></div>
+            <div class="skeleton-body">
+              <div class="skeleton-line long"></div>
+              <div class="skeleton-line medium"></div>
+              <div class="skeleton-line short"></div>
+            </div>
+          </div>
+          <div class="skeleton-card" aria-hidden="true">
+            <div class="skeleton-image"></div>
+            <div class="skeleton-body">
+              <div class="skeleton-line short"></div>
+              <div class="skeleton-line long"></div>
+              <div class="skeleton-line medium"></div>
+            </div>
+          </div>
+          <div class="skeleton-card" aria-hidden="true">
+            <div class="skeleton-image"></div>
+            <div class="skeleton-body">
+              <div class="skeleton-line medium"></div>
+              <div class="skeleton-line long"></div>
+              <div class="skeleton-line short"></div>
+            </div>
+          </div>
+          <div class="skeleton-card" aria-hidden="true">
+            <div class="skeleton-image"></div>
+            <div class="skeleton-body">
+              <div class="skeleton-line long"></div>
+              <div class="skeleton-line short"></div>
+              <div class="skeleton-line medium"></div>
+            </div>
+          </div>
+
+        </div><!-- /#product-grid -->
+      </div><!-- /#product-grid-wrapper -->
+
+    </section><!-- /#catalog-column -->
+
+    <!-- ── Column 2: Cart Sidebar ─────────────────────────────────────── -->
+    <aside id="cart-column" aria-label="Shopping Cart">
+
+      <div class="section-header">
+        <h2 class="section-title">
+          Your Cart
+          <span id="cart-badge" aria-live="polite" aria-label="Cart item count">0</span>
+        </h2>
+      </div>
+
+      <div id="cart-list-wrapper">
+        <div id="cart-list" role="list" aria-label="Cart items">
+          <div class="cart-empty-state">
+            <div class="cart-empty-icon">&#128722;</div>
+            <div>No items yet.</div>
+            <div style="margin-top:4px; font-size:10px; color: var(--text-muted);">Items added via agent tools will appear here.</div>
+          </div>
+        </div>
+      </div>
+
+      <footer id="cart-footer">
+        <div class="cart-total-row">
+          <span class="cart-total-label">Order Total</span>
+          <span id="cart-total" aria-live="polite" aria-label="Order total">$0.00</span>
+        </div>
+        <p class="cart-hint">Add items via agent tools</p>
+      </footer>
+
+    </aside><!-- /#cart-column -->
+
+    <!-- ── Column 3: Tool Activity Log ───────────────────────────────── -->
+    <section id="log-column" aria-label="Tool Activity Log">
+
+      <div class="section-header">
+        <h2 class="section-title">
+          <span class="live-dot" aria-hidden="true"></span>
+          Tool Activity Log
+        </h2>
+        <div class="log-header-actions">
+          <button
+            class="btn-clear"
+            onclick="document.getElementById('tool-log').innerHTML=''"
+            aria-label="Clear tool activity log"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+
+      <div id="tool-log" role="log" aria-live="polite" aria-label="Tool call activity">
+
+        <!-- Welcome / initial system message -->
+        <div class="log-entry log-system">
+          <div class="log-header">
+            <span class="log-time">--:--:--</span>
+            <span class="log-name">SYSTEM</span>
+          </div>
+          <span class="log-msg">WebMCP Demo loaded. Waiting for navigator.modelContext or polyfill&hellip;</span>
+        </div>
+
+      </div><!-- /#tool-log -->
+
+    </section><!-- /#log-column -->
+
+  </div><!-- /#main-layout -->
+
+</div><!-- /#app -->
+
+<!-- ═══ WEBMCP JAVASCRIPT ═════════════════════════════════════════════ -->
+<script>
+// === WEBMCP DEMO — JAVASCRIPT ===
+
+// ---------------------------------------------------------------------------
+// Product Data (CustomInk-style catalog)
+// ---------------------------------------------------------------------------
+const PRODUCTS = [
+  {
+    id: "gildan-64000",
+    name: "Gildan 64000 Softstyle T-Shirt",
+    brand: "Gildan",
+    category: "t-shirts",
+    description: "The industry-standard Softstyle tee — ring-spun cotton blend, ultra-soft hand feel, excellent printability.",
+    colors: ["White", "Black", "Navy", "Red", "Royal Blue", "Forest Green", "Charcoal", "Sand"],
+    sizes: ["XS", "S", "M", "L", "XL", "2XL", "3XL"],
+    decorations: ["screen-print", "dtg", "heat-transfer"],
+    priceTiers: [
+      { min: 12,  max: 23,       unitPrice: 6.99 },
+      { min: 24,  max: 47,       unitPrice: 5.99 },
+      { min: 48,  max: 71,       unitPrice: 5.29 },
+      { min: 72,  max: 143,      unitPrice: 4.69 },
+      { min: 144, max: Infinity, unitPrice: 3.99 }
+    ],
+    decorationCosts: { "screen-print": 3.50, "embroidery": 6.00, "dtg": 8.00, "heat-transfer": 4.00 },
+    emoji: "👕"
+  },
+  {
+    id: "bella-canvas-3001",
+    name: "Bella+Canvas 3001 Unisex T-Shirt",
+    brand: "Bella+Canvas",
+    category: "t-shirts",
+    description: "Premium retail-fit tee, Airlume combed and ring-spun cotton. Superior drape and vibrant print results.",
+    colors: ["White", "Black", "Navy", "Athletic Heather", "Red", "Cardinal", "Dark Grey", "Light Blue"],
+    sizes: ["XS", "S", "M", "L", "XL", "2XL", "3XL"],
+    decorations: ["screen-print", "dtg", "heat-transfer"],
+    priceTiers: [
+      { min: 12,  max: 23,       unitPrice: 8.99 },
+      { min: 24,  max: 47,       unitPrice: 7.79 },
+      { min: 48,  max: 71,       unitPrice: 6.99 },
+      { min: 72,  max: 143,      unitPrice: 6.29 },
+      { min: 144, max: Infinity, unitPrice: 5.49 }
+    ],
+    decorationCosts: { "screen-print": 3.50, "embroidery": 6.00, "dtg": 8.00, "heat-transfer": 4.00 },
+    emoji: "👕"
+  },
+  {
+    id: "comfort-colors-1717",
+    name: "Comfort Colors 1717 Garment-Dyed T-Shirt",
+    brand: "Comfort Colors",
+    category: "t-shirts",
+    description: "Garment-dyed for a lived-in vintage look. Heavyweight, relaxed fit with standout color that customers love.",
+    colors: ["Ivory", "Pepper", "Blue Jean", "Crimson", "Moss", "Maroon", "Sand", "Chalky Mint"],
+    sizes: ["S", "M", "L", "XL", "2XL", "3XL"],
+    decorations: ["screen-print", "dtg", "heat-transfer"],
+    priceTiers: [
+      { min: 12,  max: 23,       unitPrice: 10.49 },
+      { min: 24,  max: 47,       unitPrice: 9.29 },
+      { min: 48,  max: 71,       unitPrice: 8.49 },
+      { min: 72,  max: 143,      unitPrice: 7.79 },
+      { min: 144, max: Infinity, unitPrice: 6.99 }
+    ],
+    decorationCosts: { "screen-print": 3.50, "embroidery": 6.00, "dtg": 8.00, "heat-transfer": 4.00 },
+    emoji: "👕"
+  },
+  {
+    id: "gildan-18500",
+    name: "Gildan 18500 Heavy Blend Hoodie",
+    brand: "Gildan",
+    category: "hoodies",
+    description: "Best-selling pullover hoodie, 50/50 cotton-poly Heavy Blend fleece. Warm, durable, smooth printing surface.",
+    colors: ["White", "Black", "Navy", "Royal Blue", "Sport Grey", "Forest Green", "Maroon", "Charcoal"],
+    sizes: ["S", "M", "L", "XL", "2XL", "3XL"],
+    decorations: ["screen-print", "embroidery", "heat-transfer"],
+    priceTiers: [
+      { min: 12,  max: 23,       unitPrice: 18.99 },
+      { min: 24,  max: 47,       unitPrice: 16.99 },
+      { min: 48,  max: 71,       unitPrice: 15.49 },
+      { min: 72,  max: 143,      unitPrice: 13.99 },
+      { min: 144, max: Infinity, unitPrice: 12.49 }
+    ],
+    decorationCosts: { "screen-print": 3.50, "embroidery": 6.00, "dtg": 8.00, "heat-transfer": 4.00 },
+    emoji: "🧥"
+  },
+  {
+    id: "itc-ss4500",
+    name: "Independent Trading Co. SS4500 Hoodie",
+    brand: "Independent Trading Co.",
+    category: "hoodies",
+    description: "Midweight pullover hoodie with modern fit, soft cotton-poly blend. Ideal for everyday wear and premium decoration.",
+    colors: ["White", "Black", "Gunmetal", "Nickel", "Natural", "Red", "Aquatint Blue", "Dusty Rose"],
+    sizes: ["XS", "S", "M", "L", "XL", "2XL", "3XL"],
+    decorations: ["screen-print", "embroidery", "dtg", "heat-transfer"],
+    priceTiers: [
+      { min: 12,  max: 23,       unitPrice: 22.49 },
+      { min: 24,  max: 47,       unitPrice: 19.99 },
+      { min: 48,  max: 71,       unitPrice: 17.99 },
+      { min: 72,  max: 143,      unitPrice: 15.99 },
+      { min: 144, max: Infinity, unitPrice: 13.99 }
+    ],
+    decorationCosts: { "screen-print": 3.50, "embroidery": 6.00, "dtg": 8.00, "heat-transfer": 4.00 },
+    emoji: "🧥"
+  },
+  {
+    id: "jerzees-562mr",
+    name: "Jerzees 562MR Nublend Crew Sweatshirt",
+    brand: "Jerzees",
+    category: "sweatshirts",
+    description: "Classic crewneck sweatshirt, pill-resistant NuBlend fleece. A staple for group and school apparel programs.",
+    colors: ["White", "Black", "Navy", "Oxford", "Forest Green", "Red", "Royal Blue", "Charcoal Grey"],
+    sizes: ["S", "M", "L", "XL", "2XL", "3XL"],
+    decorations: ["screen-print", "embroidery", "heat-transfer"],
+    priceTiers: [
+      { min: 12,  max: 23,       unitPrice: 14.99 },
+      { min: 24,  max: 47,       unitPrice: 13.29 },
+      { min: 48,  max: 71,       unitPrice: 11.99 },
+      { min: 72,  max: 143,      unitPrice: 10.49 },
+      { min: 144, max: Infinity, unitPrice:  8.99 }
+    ],
+    decorationCosts: { "screen-print": 3.50, "embroidery": 6.00, "dtg": 8.00, "heat-transfer": 4.00 },
+    emoji: "👔"
+  },
+  {
+    id: "next-level-6210",
+    name: "Next Level 6210 Premium Fitted T-Shirt",
+    brand: "Next Level",
+    category: "t-shirts",
+    description: "Premium fitted tri-blend tee with soft hand, subtle heathered texture, and a flattering athletic silhouette.",
+    colors: ["White", "Black", "Vintage Navy", "Vintage Red", "Vintage Royal", "Tahiti Blue", "Warm White", "Indigo"],
+    sizes: ["XS", "S", "M", "L", "XL", "2XL"],
+    decorations: ["screen-print", "dtg", "heat-transfer"],
+    priceTiers: [
+      { min: 12,  max: 23,       unitPrice: 9.49 },
+      { min: 24,  max: 47,       unitPrice: 8.29 },
+      { min: 48,  max: 71,       unitPrice: 7.49 },
+      { min: 72,  max: 143,      unitPrice: 6.79 },
+      { min: 144, max: Infinity, unitPrice: 5.99 }
+    ],
+    decorationCosts: { "screen-print": 3.50, "embroidery": 6.00, "dtg": 8.00, "heat-transfer": 4.00 },
+    emoji: "👕"
+  },
+  {
+    id: "richardson-112",
+    name: "Richardson 112 Trucker Cap",
+    brand: "Richardson",
+    category: "hats",
+    description: "The iconic structured snapback trucker cap — the go-to blank for high-quality embroidered logo hats.",
+    colors: ["White/White", "Black/Black", "Navy/White", "Royal/White", "Red/White", "Forest/White", "Charcoal/Black", "Khaki/Brown"],
+    sizes: ["One Size"],
+    decorations: ["embroidery", "heat-transfer"],
+    priceTiers: [
+      { min: 12,  max: 23,       unitPrice: 14.99 },
+      { min: 24,  max: 47,       unitPrice: 13.49 },
+      { min: 48,  max: 71,       unitPrice: 11.99 },
+      { min: 72,  max: 143,      unitPrice: 10.49 },
+      { min: 144, max: Infinity, unitPrice:  8.99 }
+    ],
+    decorationCosts: { "screen-print": 3.50, "embroidery": 6.00, "dtg": 8.00, "heat-transfer": 4.00 },
+    emoji: "🧢"
+  },
+  {
+    id: "port-authority-flexfit",
+    name: "Port Authority Flexfit Stretch Cap",
+    brand: "Port Authority",
+    category: "hats",
+    description: "Structured low-profile cap with Flexfit stretch technology. Ideal for corporate branding and team headwear.",
+    colors: ["Black", "Navy", "Royal Blue", "Red", "White", "Charcoal", "Forest Green"],
+    sizes: ["S/M", "L/XL"],
+    decorations: ["embroidery", "heat-transfer"],
+    priceTiers: [
+      { min: 12,  max: 23,       unitPrice: 16.49 },
+      { min: 24,  max: 47,       unitPrice: 14.99 },
+      { min: 48,  max: 71,       unitPrice: 13.49 },
+      { min: 72,  max: 143,      unitPrice: 11.99 },
+      { min: 144, max: Infinity, unitPrice: 10.49 }
+    ],
+    decorationCosts: { "screen-print": 3.50, "embroidery": 6.00, "dtg": 8.00, "heat-transfer": 4.00 },
+    emoji: "🧢"
+  },
+  {
+    id: "gildan-5400",
+    name: "Gildan 5400 Heavy Cotton Long Sleeve",
+    brand: "Gildan",
+    category: "long-sleeves",
+    description: "Classic 100% preshrunk heavy cotton long sleeve — durable and affordable canvas for screen printing.",
+    colors: ["White", "Black", "Navy", "Royal Blue", "Forest Green", "Maroon", "Charcoal", "Light Blue"],
+    sizes: ["S", "M", "L", "XL", "2XL", "3XL"],
+    decorations: ["screen-print", "dtg", "heat-transfer"],
+    priceTiers: [
+      { min: 12,  max: 23,       unitPrice: 8.49 },
+      { min: 24,  max: 47,       unitPrice: 7.49 },
+      { min: 48,  max: 71,       unitPrice: 6.79 },
+      { min: 72,  max: 143,      unitPrice: 5.99 },
+      { min: 144, max: Infinity, unitPrice: 4.99 }
+    ],
+    decorationCosts: { "screen-print": 3.50, "embroidery": 6.00, "dtg": 8.00, "heat-transfer": 4.00 },
+    emoji: "👕"
+  }
+];
+
+// ---------------------------------------------------------------------------
+// Cart state
+// ---------------------------------------------------------------------------
+let cart = [];
+let cartIdCounter = 0;
+
+// ---------------------------------------------------------------------------
+// Color → approximate hex map (for swatches)
+// ---------------------------------------------------------------------------
+const COLOR_HEX = {
+  "White": "#f8f8f8", "Black": "#1a1a1a", "Navy": "#001f5b", "Red": "#cc0000",
+  "Royal Blue": "#2962cc", "Forest Green": "#1a5c2a", "Charcoal": "#4a4a4a",
+  "Sand": "#c2b280", "Athletic Heather": "#a0a0a0", "Cardinal": "#8c1515",
+  "Dark Grey": "#555555", "Light Blue": "#add8e6", "Ivory": "#fffff0",
+  "Pepper": "#5c4033", "Blue Jean": "#4a6fa5", "Crimson": "#a00000",
+  "Moss": "#6b7c45", "Maroon": "#800000", "Chalky Mint": "#a8d8bb",
+  "Oxford": "#8a8a8a", "Sport Grey": "#9e9e9e", "Gunmetal": "#53565a",
+  "Nickel": "#727472", "Natural": "#f5f0e8", "Aquatint Blue": "#7bafc4",
+  "Dusty Rose": "#d4a0a0", "Vintage Navy": "#2c3e6e", "Vintage Red": "#8b2500",
+  "Vintage Royal": "#2c4a8c", "Tahiti Blue": "#0077b6", "Warm White": "#faf5ee",
+  "Indigo": "#4b0082", "White/White": "#f8f8f8", "Black/Black": "#1a1a1a",
+  "Navy/White": "#001f5b", "Royal/White": "#2962cc", "Red/White": "#cc0000",
+  "Forest/White": "#1a5c2a", "Charcoal/Black": "#4a4a4a", "Khaki/Brown": "#c3a06e",
+  "Charcoal Grey": "#555", "Royal": "#2962cc", "Forest": "#1a5c2a"
+};
+
+function getColorHex(name) {
+  return COLOR_HEX[name] || "#888";
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function formatJSON(val) {
+  try { return JSON.stringify(val, null, 2); } catch (_) { return String(val); }
+}
+
+function findProduct(id) {
+  return PRODUCTS.find(p => p.id === id) || null;
+}
+
+function findTier(product, qty) {
+  return product.priceTiers.find(t => qty >= t.min && qty <= t.max) || null;
+}
+
+function toPublicShape(p) {
+  return { id: p.id, name: p.name, brand: p.brand, category: p.category,
+           description: p.description, colors: p.colors, sizes: p.sizes,
+           decorations: p.decorations, emoji: p.emoji };
+}
+
+// ---------------------------------------------------------------------------
+// window.renderProducts — populates #product-grid using dark-theme CSS classes
+// ---------------------------------------------------------------------------
+const DECOR_LABELS = { "screen-print": "Screen Print", "embroidery": "Embroidery", "dtg": "DTG", "heat-transfer": "Heat Transfer" };
+const DECOR_SHORT  = { "screen-print": "Screen", "embroidery": "Emb", "dtg": "DTG", "heat-transfer": "HT" };
+
+window.renderProducts = function(products) {
+  const grid = document.getElementById("product-grid");
+  if (!grid) return;
+
+  if (!products || products.length === 0) {
+    grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:2rem 0;">No products found.</p>';
+    return;
+  }
+
+  grid.innerHTML = products.map(p => {
+    const lowestPrice = (p.priceTiers || PRODUCTS.find(x=>x.id===p.id)?.priceTiers || [])[0]?.unitPrice ?? 0;
+    const category    = p.category.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+
+    const swatches = p.colors.slice(0, 8).map(c => {
+      const hex    = getColorHex(c);
+      return `<span title="${escapeHtml(c)}" style="display:inline-block;width:13px;height:13px;border-radius:50%;background:${hex};border:1px solid rgba(0,0,0,0.2);margin:1px;flex-shrink:0;"></span>`;
+    }).join("");
+
+    const sizePills = p.sizes.slice(0, 6).map(s =>
+      `<span style="display:inline-block;font-size:9.5px;padding:1px 5px;border-radius:3px;background:var(--bg-raised);color:var(--text-secondary);border:1px solid var(--border);margin:1px;font-family:var(--font-mono);">${s}</span>`
+    ).join("");
+
+    const decorBadges = p.decorations.map(d =>
+      `<span style="display:inline-block;font-size:9.5px;padding:1px 6px;border-radius:10px;background:rgba(250,60,0,0.08);color:var(--accent-amber);border:1px solid rgba(250,60,0,0.2);margin:1px;font-weight:600;">${DECOR_SHORT[d]||d}</span>`
+    ).join("");
+
+    return `
+      <div class="product-card" data-product-id="${p.id}" role="listitem">
+        <div class="product-card-image" style="display:flex;align-items:center;justify-content:center;font-size:52px;line-height:1;">
+          ${p.emoji}
+        </div>
+        <div class="product-card-body">
+          <div class="product-card-name">${escapeHtml(p.name)}</div>
+          <div class="product-card-category">${escapeHtml(p.brand)} &middot; ${escapeHtml(category)}</div>
+
+          <div style="margin-bottom:6px;display:flex;flex-wrap:wrap;align-items:center;gap:1px;">${swatches}</div>
+          <div style="margin-bottom:6px;">${sizePills}</div>
+          <div style="margin-bottom:8px;">${decorBadges}</div>
+
+          <div style="border-top:1px solid var(--border);padding-top:8px;display:flex;align-items:baseline;gap:6px;">
+            <span class="product-card-price">$${lowestPrice.toFixed(2)}</span>
+            <span style="font-size:10.5px;color:var(--text-muted);font-family:var(--font-mono);">/ ea · min 12</span>
+          </div>
+          <div style="font-size:9px;color:var(--text-muted);font-family:var(--font-mono);margin-top:4px;opacity:0.6;">${p.id}</div>
+        </div>
+      </div>`;
+  }).join("");
+};
+
+// ---------------------------------------------------------------------------
+// window.renderCart — updates cart sidebar
+// ---------------------------------------------------------------------------
+window.renderCart = function(cartData) {
+  const listEl   = document.getElementById("cart-list");
+  const totalEl  = document.getElementById("cart-total");
+  const badgeEl  = document.getElementById("cart-badge");
+
+  const totalQty   = cartData.reduce((s, i) => s + i.quantity, 0);
+  const totalPrice = cartData.reduce((s, i) => s + i.lineTotal, 0);
+
+  if (badgeEl) badgeEl.textContent = String(totalQty);
+  if (totalEl) totalEl.textContent = "$" + totalPrice.toFixed(2);
+  if (!listEl) return;
+
+  if (cartData.length === 0) {
+    listEl.innerHTML = `
+      <div class="cart-empty-state">
+        <div class="cart-empty-icon">🛒</div>
+        <div>No items yet.</div>
+        <div style="margin-top:4px;font-size:10px;color:var(--text-muted);">Items added via agent tools will appear here.</div>
+      </div>`;
+    return;
+  }
+
+  listEl.innerHTML = cartData.map(item => `
+    <div class="cart-item" role="listitem">
+      <div class="cart-item-info">
+        <div class="cart-item-name">${escapeHtml(item.name)}</div>
+        <div class="cart-item-meta">${escapeHtml(item.color)} · ${escapeHtml(item.size)}</div>
+        <div class="cart-item-meta">${DECOR_LABELS[item.decoration]||item.decoration} · Qty ${item.quantity}</div>
+        <div class="cart-item-meta" style="opacity:0.6;font-size:10px;">$${item.unitPrice.toFixed(2)}/ea + $${item.decorationCost.toFixed(2)} deco</div>
+      </div>
+      <div class="cart-item-price">$${item.lineTotal.toFixed(2)}</div>
+    </div>`
+  ).join("");
+};
+
+// ---------------------------------------------------------------------------
+// window.logToolCall — appends entry to #tool-log
+// ---------------------------------------------------------------------------
+window.logToolCall = function(name, params, result, isError, durationMs) {
+  const container = document.getElementById("tool-log");
+  if (!container) return;
+
+  const now = new Date();
+  const ts  = [now.getHours(), now.getMinutes(), now.getSeconds()]
+    .map(n => String(n).padStart(2, "0")).join(":") + "." + String(now.getMilliseconds()).padStart(3, "0");
+
+  const entry = document.createElement("div");
+
+  if (name === "SYSTEM") {
+    entry.className = "log-entry log-system";
+    const msg = result?.message ?? JSON.stringify(result);
+    entry.innerHTML = `
+      <div class="log-header">
+        <span class="log-time">${escapeHtml(ts)}</span>
+        <span class="log-name">SYSTEM</span>
+      </div>
+      <span class="log-msg">${escapeHtml(msg)}</span>`;
+  } else {
+    entry.className = `log-entry ${isError ? "log-error" : "log-call"}`;
+    const errBadge = isError
+      ? `<span style="background:#da1e28;color:#fff;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:700;line-height:1.4;">ERR</span>`
+      : "";
+    entry.innerHTML = `
+      <div class="log-header">
+        <span class="log-time">${escapeHtml(ts)}</span>
+        <span class="log-name">${escapeHtml(name)}</span>
+        ${errBadge}
+        <span class="log-duration">${durationMs}ms</span>
+      </div>
+      <details>
+        <summary style="cursor:pointer;color:var(--text-muted);font-size:10px;list-style:none;padding:2px 0;">▸ params</summary>
+        <div class="log-params">${escapeHtml(formatJSON(params))}</div>
+      </details>
+      <details ${isError ? "open" : ""}>
+        <summary style="cursor:pointer;color:var(--text-muted);font-size:10px;list-style:none;padding:2px 0;">▸ ${isError ? "error" : "result"}</summary>
+        <div class="${isError ? "log-params" : "log-result"}" style="${isError ? "border-left-color:#da1e28;background:rgba(218,30,40,0.05);color:#da1e28;" : ""}">${escapeHtml(formatJSON(result))}</div>
+      </details>`;
+  }
+
+  container.appendChild(entry);
+  container.scrollTop = container.scrollHeight;
+};
+
+// ---------------------------------------------------------------------------
+// window.setAgentActive — toggles #agent-status class + label text
+// ---------------------------------------------------------------------------
+window.setAgentActive = function(bool) {
+  const el = document.getElementById("agent-status");
+  if (!el) return;
+  const label = el.querySelector(".status-label");
+  if (bool) {
+    el.classList.add("active");
+    if (label) label.textContent = "Agent Active";
+  } else {
+    el.classList.remove("active");
+    if (label) label.textContent = "Waiting for Agent";
+  }
+};
+
+// ---------------------------------------------------------------------------
+// WebMCP Tool Registration
+// ---------------------------------------------------------------------------
+function registerAllTools() {
+
+  // ── searchProducts ────────────────────────────────────────────────────────
+  window.navigator.modelContext.registerTool({
+    name: "searchProducts",
+    description: "Search and filter the product catalog. Returns matching products with their IDs, colors, sizes, and decoration options. Use this to discover products before calling configureProduct or getQuote.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Search term matched against product name, brand, and description (case-insensitive). Omit or pass empty string to match all."
+        },
+        category: {
+          type: "string",
+          enum: ["t-shirts", "hoodies", "hats", "long-sleeves", "sweatshirts"],
+          description: "Filter to an exact product category. Omit to search across all categories."
+        }
+      },
+      required: []
+    },
+    execute(params, agent) {
+      window.setAgentActive(true);
+      const start = Date.now();
+      let result, isError = false;
+      try {
+        const { query, category } = params;
+        let matches = PRODUCTS.slice();
+        if (query && query.trim()) {
+          const q = query.toLowerCase();
+          matches = matches.filter(p =>
+            p.name.toLowerCase().includes(q) ||
+            p.brand.toLowerCase().includes(q) ||
+            p.description.toLowerCase().includes(q)
+          );
+        }
+        if (category && category.trim()) {
+          matches = matches.filter(p => p.category === category.trim());
+        }
+        result = { products: matches.map(toPublicShape), count: matches.length };
+      } catch (err) {
+        isError = true;
+        result = { error: err.message };
+        window.logToolCall("searchProducts", params, result, true, Date.now() - start);
+        window.setAgentActive(false);
+        throw err;
+      }
+      window.logToolCall("searchProducts", params, result, false, Date.now() - start);
+      window.setAgentActive(false);
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    }
+  });
+
+  // ── configureProduct ──────────────────────────────────────────────────────
+  window.navigator.modelContext.registerTool({
+    name: "configureProduct",
+    description: "Validate and configure a product with a specific color and size. Returns available decoration methods and the starting unit price (at minimum 12-piece quantity). Call this before getQuote or addToCart.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        productId:  { type: "string", description: "Product ID from searchProducts results (e.g. 'gildan-64000')." },
+        color:      { type: "string", description: "Exact color name from the product's colors array." },
+        size:       { type: "string", description: "Exact size from the product's sizes array (e.g. 'M', 'L', 'One Size')." }
+      },
+      required: ["productId", "color", "size"]
+    },
+    execute(params, agent) {
+      window.setAgentActive(true);
+      const start = Date.now();
+      let result, isError = false;
+      try {
+        const { productId, color, size } = params;
+        const p = findProduct(productId);
+        if (!p) throw new Error(`Product not found: "${productId}". Call searchProducts to find valid IDs.`);
+        if (!p.colors.includes(color)) throw new Error(`Color "${color}" not available for ${p.name}. Available: ${p.colors.join(", ")}`);
+        if (!p.sizes.includes(size)) throw new Error(`Size "${size}" not available for ${p.name}. Available: ${p.sizes.join(", ")}`);
+
+        result = {
+          productId: p.id,
+          name: p.name,
+          color,
+          size,
+          unitPrice: p.priceTiers[0].unitPrice,
+          available: true,
+          availableDecorations: p.decorations
+        };
+      } catch (err) {
+        isError = true;
+        result = { error: err.message };
+        window.logToolCall("configureProduct", params, result, true, Date.now() - start);
+        window.setAgentActive(false);
+        throw err;
+      }
+      window.logToolCall("configureProduct", params, result, false, Date.now() - start);
+      window.setAgentActive(false);
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    }
+  });
+
+  // ── getQuote ──────────────────────────────────────────────────────────────
+  window.navigator.modelContext.registerTool({
+    name: "getQuote",
+    description: "Calculate a price quote including quantity-based pricing tiers and decoration costs. Minimum quantity is 12. Returns a full price breakdown and savings vs. minimum-quantity pricing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        productId:  { type: "string",  description: "Product ID." },
+        quantity:   { type: "number",  description: "Number of items to order. Minimum 12." },
+        color:      { type: "string",  description: "Exact color name." },
+        size:       { type: "string",  description: "Exact size." },
+        decoration: {
+          type: "string",
+          enum: ["screen-print", "embroidery", "dtg", "heat-transfer"],
+          description: "Decoration method. Must be in the product's availableDecorations list."
+        }
+      },
+      required: ["productId", "quantity", "color", "size", "decoration"]
+    },
+    execute(params, agent) {
+      window.setAgentActive(true);
+      const start = Date.now();
+      let result, isError = false;
+      try {
+        const { productId, quantity, color, size, decoration } = params;
+        const p = findProduct(productId);
+        if (!p) throw new Error(`Product not found: "${productId}".`);
+        if (!p.colors.includes(color))       throw new Error(`Color "${color}" not available for ${p.name}.`);
+        if (!p.sizes.includes(size))         throw new Error(`Size "${size}" not available for ${p.name}.`);
+        if (!p.decorations.includes(decoration)) throw new Error(`Decoration "${decoration}" not available for ${p.name}. Options: ${p.decorations.join(", ")}`);
+        if (quantity < 12) throw new Error(`Minimum order quantity is 12. Got: ${quantity}`);
+
+        const tier          = findTier(p, quantity);
+        if (!tier) throw new Error(`No price tier for quantity ${quantity}.`);
+
+        const unitPrice     = tier.unitPrice;
+        const decorCost     = p.decorationCosts[decoration];
+        const unitTotal     = unitPrice + decorCost;
+        const subtotal      = unitTotal * quantity;
+        const lowestUnit    = p.priceTiers[0].unitPrice;
+        const savings       = ((lowestUnit - unitPrice) * quantity).toFixed(2);
+
+        result = {
+          productId: p.id,
+          name: p.name,
+          color, size, decoration, quantity,
+          unitPrice,
+          decorationCost: decorCost,
+          unitTotal,
+          subtotal,
+          savings,
+          priceBreakdown: `${quantity} pcs @ $${unitPrice.toFixed(2)}/ea + $${decorCost.toFixed(2)} decoration = $${unitTotal.toFixed(2)}/ea · Total: $${subtotal.toFixed(2)}`
+        };
+      } catch (err) {
+        isError = true;
+        result = { error: err.message };
+        window.logToolCall("getQuote", params, result, true, Date.now() - start);
+        window.setAgentActive(false);
+        throw err;
+      }
+      window.logToolCall("getQuote", params, result, false, Date.now() - start);
+      window.setAgentActive(false);
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    }
+  });
+
+  // ── addToCart ─────────────────────────────────────────────────────────────
+  window.navigator.modelContext.registerTool({
+    name: "addToCart",
+    description: "Add a configured product to the shopping cart. Runs full validation (same as getQuote). Updates the cart UI immediately. Returns the updated cart and order total.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        productId:  { type: "string", description: "Product ID." },
+        quantity:   { type: "number", description: "Number of items. Minimum 12." },
+        color:      { type: "string", description: "Exact color name." },
+        size:       { type: "string", description: "Exact size." },
+        decoration: {
+          type: "string",
+          enum: ["screen-print", "embroidery", "dtg", "heat-transfer"],
+          description: "Decoration method."
+        }
+      },
+      required: ["productId", "quantity", "color", "size", "decoration"]
+    },
+    execute(params, agent) {
+      window.setAgentActive(true);
+      const start = Date.now();
+      let result, isError = false;
+      try {
+        const { productId, quantity, color, size, decoration } = params;
+        const p = findProduct(productId);
+        if (!p) throw new Error(`Product not found: "${productId}".`);
+        if (!p.colors.includes(color))       throw new Error(`Color "${color}" not available for ${p.name}.`);
+        if (!p.sizes.includes(size))         throw new Error(`Size "${size}" not available for ${p.name}.`);
+        if (!p.decorations.includes(decoration)) throw new Error(`Decoration "${decoration}" not available for ${p.name}. Options: ${p.decorations.join(", ")}`);
+        if (quantity < 12) throw new Error(`Minimum order quantity is 12. Got: ${quantity}`);
+
+        const tier      = findTier(p, quantity);
+        if (!tier) throw new Error(`No price tier for quantity ${quantity}.`);
+
+        const unitPrice = tier.unitPrice;
+        const decorCost = p.decorationCosts[decoration];
+        const lineTotal = (unitPrice + decorCost) * quantity;
+
+        const newItem = {
+          cartItemId: ++cartIdCounter,
+          productId: p.id,
+          name: p.name,
+          color, size, decoration, quantity,
+          unitPrice,
+          decorationCost: decorCost,
+          lineTotal
+        };
+
+        cart.push(newItem);
+        window.renderCart(cart);
+
+        const itemCount  = cart.reduce((s, i) => s + i.quantity, 0);
+        const orderTotal = cart.reduce((s, i) => s + i.lineTotal, 0).toFixed(2);
+
+        result = {
+          success: true,
+          cartItemId: newItem.cartItemId,
+          itemAdded: newItem,
+          cart: cart.slice(),
+          itemCount,
+          orderTotal
+        };
+      } catch (err) {
+        isError = true;
+        result = { error: err.message };
+        window.logToolCall("addToCart", params, result, true, Date.now() - start);
+        window.setAgentActive(false);
+        throw err;
+      }
+      window.logToolCall("addToCart", params, result, false, Date.now() - start);
+      window.setAgentActive(false);
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    }
+  });
+
+  // ── getCart ───────────────────────────────────────────────────────────────
+  window.navigator.modelContext.registerTool({
+    name: "getCart",
+    description: "Read-only. Returns the current cart contents, total item count, and order total. To add items, use addToCart.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: []
+    },
+    execute(params, agent) {
+      window.setAgentActive(true);
+      const start = Date.now();
+      let result;
+      try {
+        const itemCount  = cart.reduce((s, i) => s + i.quantity, 0);
+        const orderTotal = cart.reduce((s, i) => s + i.lineTotal, 0).toFixed(2);
+        result = { cart: cart.slice(), itemCount, orderTotal, readonly: true, note: "Use addToCart to modify cart" };
+      } catch (err) {
+        const r = { error: err.message };
+        window.logToolCall("getCart", params, r, true, Date.now() - start);
+        window.setAgentActive(false);
+        throw err;
+      }
+      window.logToolCall("getCart", params, result, false, Date.now() - start);
+      window.setAgentActive(false);
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    }
+  });
+
+  window.logToolCall("SYSTEM", {}, { message: "5 tools registered: searchProducts, configureProduct, getQuote, addToCart, getCart" }, false, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Polyfill + bootstrap
+// ---------------------------------------------------------------------------
+async function initWebMCP() {
+  if (!("modelContext" in window.navigator)) {
+    const warn = document.getElementById("polyfill-warning");
+    if (warn) warn.hidden = false;
+
+    window.logToolCall("SYSTEM", {}, { message: "⚠ navigator.modelContext not found. Loading @mcp-b/global polyfill…" }, false, 0);
+
+    await new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://unpkg.com/@mcp-b/global@latest/dist/index.js";
+      s.onload = resolve;
+      s.onerror = () => reject(new Error("Failed to load @mcp-b/global from CDN"));
+      document.head.appendChild(s);
+    });
+
+    window.logToolCall("SYSTEM", {}, { message: "✓ @mcp-b/global polyfill loaded. Registering tools via polyfill." }, false, 0);
+  } else {
+    window.logToolCall("SYSTEM", {}, { message: "✓ navigator.modelContext detected — native WebMCP is active." }, false, 0);
+  }
+
+  registerAllTools();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  window.renderProducts(PRODUCTS);
+  window.renderCart(cart);
+
+  initWebMCP().catch(err => {
+    window.logToolCall("SYSTEM", {}, { message: `✗ WebMCP init failed: ${err.message}` }, true, 0);
+  });
+});
+</script>
+
+</body>
+</html>
