@@ -110,36 +110,11 @@ The Tool Activity Log on the page updates in real time as tools are called.
 
 ---
 
-## Connecting Claude Code via MCP (Advanced)
+## Connecting Claude Code via MCP (Coming Soon)
 
-You can connect Claude Code directly to the page using the `@mcp-b/chrome-devtools-mcp` server.
+> **Note:** Getting Claude Code to call WebMCP tools directly through the Chrome DevTools bridge is a work in progress. The setup is non-trivial — skip this section for now and use the Model Context Tool Inspector extension above instead.
 
-### 1. Start Chrome with remote debugging
-
-Add this alias to your shell config:
-
-```bash
-alias chrome-debug='killall "Google Chrome Canary" 2>/dev/null; sleep 1; \
-  "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary" \
-  --remote-debugging-port=9222 \
-  --user-data-dir=/tmp/chrome-canary-debug &'
-```
-
-Then run `chrome-debug` to launch Chrome with debugging enabled.
-
-### 2. Configure the MCP server
-
-From your `webmcp/` project directory:
-
-```bash
-claude mcp add chrome-devtools -- npx @mcp-b/chrome-devtools-mcp@latest --browserUrl http://127.0.0.1:9222
-```
-
-### 3. Navigate to the demo and use it
-
-Once Claude Code is open in this project, the `chrome-devtools` MCP server gives Claude access to tools like `list_pages`, `navigate_page`, and `evaluate_script` to drive the browser directly.
-
-> **Note:** The `list_webmcp_tools` / `call_webmcp_tool` path requires the `@mcp-b/global` package working as an ES module with a tab server transport. The extension approach above is more reliable for testing.
+The goal is to connect Claude Code to the page using `@mcp-b/chrome-devtools-mcp`, which would let Claude drive the demo through `list_pages`, `navigate_page`, and `call_webmcp_tool`. We'll update this section once the setup is reliable.
 
 ---
 
@@ -159,14 +134,10 @@ webmcp/
 
 ---
 
-## Design
+## Further Reading
 
-Styled using [Pigment](https://pigment.customink.com/) design tokens (light theme) hardcoded as CSS custom properties:
-
-- **Brand orange** `#fa3c00` — `semantics.light.partnership.background.bold`
-- **Page background** `#fafafa` — `semantics.light.neutral.background.pageBG`
-- **Header** `#363636` — `semantics.light.neutral.background.toolbar`
-- **Typography** — Source Sans 3 (CustomInk brand font)
+- [Why WebMCP?](./why-webmcp.md) — Pages with vs. without WebMCP: diagrams, comparison table, and mental model
+- [Custom Ink Integration Guide](./customink-webmcp-integration.md) — What it would take to make the real Custom Ink t-shirts page WebMCP-enabled
 
 ---
 
