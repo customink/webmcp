@@ -1316,16 +1316,27 @@ window.logToolCall = function(name, params, result, isError, durationMs) {
 // ---------------------------------------------------------------------------
 // window.setAgentActive — toggles #agent-status class + label text
 // ---------------------------------------------------------------------------
+// Since tool execute() functions are synchronous, true+false fire in the same
+// JS task and the browser never repaints between them. We debounce the "false"
+// call so the indicator stays visible for 2 seconds after the last tool call.
+let _agentActiveTimer = null;
 window.setAgentActive = function(bool) {
   const el = document.getElementById("agent-status");
   if (!el) return;
   const label = el.querySelector(".status-label");
+
   if (bool) {
+    if (_agentActiveTimer) { clearTimeout(_agentActiveTimer); _agentActiveTimer = null; }
     el.classList.add("active");
     if (label) label.textContent = "Agent Active";
   } else {
-    el.classList.remove("active");
-    if (label) label.textContent = "Waiting for Agent";
+    // Debounce: stay active for 2 s after the last tool call
+    if (_agentActiveTimer) clearTimeout(_agentActiveTimer);
+    _agentActiveTimer = setTimeout(() => {
+      el.classList.remove("active");
+      if (label) label.textContent = "Waiting for Agent";
+      _agentActiveTimer = null;
+    }, 2000);
   }
 };
 
