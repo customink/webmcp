@@ -4,6 +4,8 @@ A single-file demo of the [WebMCP browser API](https://github.com/webmachinelear
 
 Styled with [Pigment](https://pigment.customink.com/) design tokens to match the CustomInk look and feel.
 
+> **A note on production readiness:** Since WebMCP is still a proposed standard (Microsoft + Google, 2025), the near-term value here is conceptual — understanding where browser-native agent APIs are heading. The real production path for CustomInk agent work right now is server-side MCP via the GraphQL gateway. WebMCP is something to watch, not build on yet.
+
 ---
 
 ## What Is WebMCP?
