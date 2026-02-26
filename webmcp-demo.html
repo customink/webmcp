@@ -2650,6 +2650,7 @@ async function initWebMCP() {
 
     await new Promise((resolve, reject) => {
       const s = document.createElement("script");
+      s.type = "module";
       s.src = "https://unpkg.com/@mcp-b/global@latest/dist/index.js";
       s.onload = resolve;
       s.onerror = () => reject(new Error("Failed to load @mcp-b/global from CDN"));

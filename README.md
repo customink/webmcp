@@ -4,6 +4,10 @@ A single-file demo of the [WebMCP browser API](https://github.com/webmachinelear
 
 Styled with [Pigment](https://pigment.customink.com/) design tokens to match the CustomInk look and feel.
 
+Two demos are included:
+- **`webmcp-demo.html`** — original Pigment-styled demo
+- **`webmcp-demo-customink.html`** — pixel-accurate replica of the real CustomInk product listing page, with real CDN product images and the live CustomInk logo embedded. Same 5 tools and Learning Mode step debugger as the original.
+
 ![WebMCP Demo — Learning Mode step debugger with Model Context Tool Inspector](docs/screenshot.png)
 
 > **A note on production readiness:** Since WebMCP is still a proposed standard (Microsoft + Google, 2025), the near-term value here is conceptual — understanding where browser-native agent APIs are heading. The real production path for CustomInk agent work right now is server-side MCP via the GraphQL gateway. WebMCP is something to watch, not build on yet.
@@ -163,14 +167,15 @@ The goal is to connect Claude Code to the page using `@mcp-b/chrome-devtools-mcp
 
 ```
 webmcp/
-├── webmcp-demo.html              # Single-file demo — all HTML, CSS, JS (~2700 lines)
-└── model-context-tool-inspector/ # Chrome extension for manual tool testing
+├── webmcp-demo.html                # Original single-file demo — Pigment design tokens, ~2700 lines
+├── webmcp-demo-customink.html      # Alternate demo — matches the real CustomInk product listing UI
+└── model-context-tool-inspector/   # Chrome extension for manual tool testing
     ├── manifest.json
     ├── background.js
     ├── content.js
     ├── sidebar.html / sidebar.js
     ├── styles.css
-    └── package.json              # npm install generates js-genai.js
+    └── package.json                # npm install generates js-genai.js
 ```
 
 ---
