@@ -8,7 +8,7 @@ A single-file WebMCP demo (`webmcp-demo.html`) simulating a CustomInk-style prod
 
 | File | Purpose |
 |------|---------|
-| `webmcp-demo.html` | Single-file demo — all HTML, CSS, JS in one file (~1650 lines) |
+| `webmcp-demo.html` | Single-file demo — all HTML, CSS, JS in one file (~2700 lines) |
 | `model-context-tool-inspector/` | Chrome extension for manually testing WebMCP tools |
 | `README.md` | Setup guide for humans |
 
@@ -95,3 +95,16 @@ Pigment light theme tokens are hardcoded as CSS custom properties in `webmcp-dem
 - **Cart** — `window.renderCart(cartArray)` updates the sidebar UI
 - **Products** — `window.renderProducts(productsArray)` populates `#product-grid`
 - **Agent indicator** — `window.setAgentActive(bool)` toggles the header status pill
+- **Step debugger** — `window.stepDebugger.intercept(name, params, schema)` is awaited inside each tool's `execute()` to pause execution in Learning Mode; `window.stepDebugger.showResponse(name, result, isError)` updates the Response tab after stepping
+- **Async execute()** — all 5 tool `execute()` functions are `async` to support the Learning Mode pause gate; they return a Promise that the WebMCP runtime awaits
+
+## Learning Mode
+
+A toggle in the page header activates a DevTools-inspired step debugger panel. When on:
+- Each tool call is intercepted via `window.stepDebugger.intercept()` before business logic runs
+- The panel slides up from the bottom showing 4 tabs: Request, Schema, Explainer, Response
+- The agent is genuinely paused — `execute()` awaits a user-gated Promise
+- "▶ Step" resolves the Promise, executes the tool, and shows the response
+- "Run All" bypasses stepping for the rest of the session
+
+When Learning Mode is off, `intercept()` short-circuits immediately with no overhead.

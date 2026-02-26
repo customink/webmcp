@@ -42,6 +42,43 @@ This is **not** Anthropic MCP. There is no stdio transport, no JSON-RPC, no serv
 
 ---
 
+## Learning Mode
+
+The demo includes a **Learning Mode** toggle in the page header. When enabled, it activates a DevTools-inspired step debugger that intercepts every WebMCP tool call before it executes.
+
+### What it does
+
+- **Pauses the agent** mid-session at each tool call — the agent genuinely waits until you click Step
+- A panel slides up from the bottom of the page showing 4 tabs:
+  - **Request** — input parameters JSON + the `navigator.modelContext` API call shape
+  - **Schema** — the full `inputSchema` for the tool's parameters
+  - **Explainer** — plain-English description of what the tool does and why the agent called it
+  - **Response** — available after stepping, shows the result JSON + a "What Changed" summary
+- **▶ Step** button resumes execution and switches to the Response tab
+- **Run All** bypasses stepping for the rest of the session
+
+### How it works under the hood
+
+All 5 tool `execute()` functions are `async`. When Learning Mode is on, they each `await` a Promise that only resolves when the user clicks Step — a genuine execution breakpoint, not a UI overlay. This mirrors hitting `debugger;` in DevTools but applied to the WebMCP protocol layer.
+
+### Testing without a real agent
+
+With Learning Mode off, you can trigger tool calls manually in the browser console:
+
+```js
+// Fake a tool call to test the UI
+window.logToolCall("searchProducts", {query: "shirts"}, {products: [], count: 0}, false, 87)
+```
+
+With Learning Mode on, trigger the actual tool execute (requires tools to be registered):
+
+```js
+// After registering tools, call execute directly
+window._mcpTools['searchProducts'].execute({ query: 'shirts', category: 'T Shirts' }, {})
+```
+
+---
+
 ## Prerequisites
 
 - **Chrome Canary** — [download here](https://www.google.com/chrome/canary/)
@@ -124,7 +161,7 @@ The goal is to connect Claude Code to the page using `@mcp-b/chrome-devtools-mcp
 
 ```
 webmcp/
-├── webmcp-demo.html              # Single-file demo — all HTML, CSS, JS
+├── webmcp-demo.html              # Single-file demo — all HTML, CSS, JS (~2700 lines)
 └── model-context-tool-inspector/ # Chrome extension for manual tool testing
     ├── manifest.json
     ├── background.js
